@@ -108,6 +108,23 @@ describe("refresh", () => {
     expect(later.file.entries[n(1)].status).toBe("ok");
   });
 
+  it("also reads a second Journal nested in another notebook, and its sub-notebooks", async () => {
+    // What Joplin mobile produced: Welcome! > Journal, next to the top-level Journal.
+    const WELCOME = "3".repeat(32);
+    const PHONE_JOURNAL = "4".repeat(32);
+    const OCTOBER = "5".repeat(32);
+    dbx.put(`${ROOT}/${WELCOME}.md`, joplinFolder(WELCOME, "Welcome!"));
+    dbx.put(`${ROOT}/${PHONE_JOURNAL}.md`, joplinFolder(PHONE_JOURNAL, "Journal").replace("parent_id: ", `parent_id: ${WELCOME}`));
+    dbx.put(`${ROOT}/${OCTOBER}.md`, joplinFolder(OCTOBER, "October").replace("parent_id: ", `parent_id: ${PHONE_JOURNAL}`));
+    dbx.put(`${ROOT}/${n(5)}.md`, joplinNote({ id: n(5), parentId: PHONE_JOURNAL, title: "2026-10-25", body: "## Time\n- gym 1h" }));
+    dbx.put(`${ROOT}/${n(6)}.md`, joplinNote({ id: n(6), parentId: OCTOBER, title: "2026-10-24", body: "## Money\n- $5 coffee" }));
+    const res = await run();
+    expect(Object.keys(res.file.entries).sort()).toEqual([n(1), n(2), n(5), n(6)]);
+    expect(res.file.journalFolderId).toBe(JOURNAL); // the top-level one stays the main notebook
+    expect(res.warnings.join(" ")).toMatch(/Found 2 notebooks named "Journal" \(one inside "Welcome!"\)/);
+    expect(JSON.stringify(res.file.entries)).not.toContain("secret recipe");
+  });
+
   it("explains a missing notebook or a wrong Joplin path", async () => {
     const res = await refresh({ dropbox: dbx, ai, joplinPath: ROOT, notebookName: "Diary" });
     expect(res.warnings.join(" ")).toMatch(/No notebook named "Diary"/);

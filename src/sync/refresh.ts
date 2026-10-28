@@ -176,10 +176,13 @@ export async function refresh(deps: RefreshDeps): Promise<RefreshResult> {
     }
   }
 
-  // 3. Find the journal notebook.
+  // 3. Find the journal notebooks: every notebook with the configured name, at any level, plus the
+  // notebooks nested inside them. Phones often end up with a second "Journal" (for example inside
+  // Joplin's "Welcome!" notebook), and entries there count too.
   const wanted = deps.notebookName.trim().toLowerCase();
-  const journal = Object.entries(file.items).find(([, m]) => m.type === ItemType.Folder && m.title?.trim().toLowerCase() === wanted);
-  if (!journal) {
+  const folders = Object.entries(file.items).filter(([, m]) => m.type === ItemType.Folder);
+  const named = folders.filter(([, m]) => m.title?.trim().toLowerCase() === wanted).map(([id]) => id);
+  if (!named.length) {
     file.cursor = cursor;
     file.cursorPath = root;
     file.updatedAt = new Date().toISOString();
@@ -187,12 +190,32 @@ export async function refresh(deps: RefreshDeps): Promise<RefreshResult> {
     const saved = await save(deps.dropbox, file, loaded.rev, touched);
     return { file: saved.file, rev: saved.rev, stats, warnings };
   }
-  const journalId = journal[0];
-  file.journalFolderId = journalId;
+  const journalIds = new Set(named);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [id, m] of folders) {
+      if (!journalIds.has(id) && journalIds.has(m.parentId)) {
+        journalIds.add(id);
+        grew = true;
+      }
+    }
+  }
+  // Prefer a top-level notebook as the main one.
+  file.journalFolderId = named.find((id) => !file.items[id].parentId) ?? named[0];
+  if (named.length > 1) {
+    const where = named
+      .map((id) => file.items[file.items[id].parentId]?.title)
+      .filter(Boolean)
+      .map((t) => `one inside "${t}"`);
+    warnings.push(
+      `Found ${named.length} notebooks named "${deps.notebookName}"${where.length ? ` (${where.join(", ")})` : ""}. Reading all of them; you can merge them in Joplin.`,
+    );
+  }
+  const inJournal = (parentId: string | undefined) => parentId !== undefined && journalIds.has(parentId);
 
   // Entries that left the notebook (moved or the notebook was swapped) are dropped.
   for (const id of Object.keys(file.entries)) {
-    if (file.items[id]?.parentId !== journalId) {
+    if (!inJournal(file.items[id]?.parentId)) {
       delete file.entries[id];
       stats.removed++;
     }
@@ -201,7 +224,7 @@ export async function refresh(deps: RefreshDeps): Promise<RefreshResult> {
   // Journal notes not downloaded this run but still needing work: new to the notebook (e.g. the
   // notebook was just renamed to match), or left pending / without AI by an earlier Refresh.
   const needsText = Object.entries(file.items)
-    .filter(([id, m]) => m.type === ItemType.Note && m.parentId === journalId && !notes.has(id))
+    .filter(([id, m]) => m.type === ItemType.Note && inJournal(m.parentId) && !notes.has(id))
     .filter(([id]) => {
       const e = file.entries[id];
       return !e || e.status === "pending" || (e.status === "no-ai" && deps.ai !== null);
@@ -219,7 +242,7 @@ export async function refresh(deps: RefreshDeps): Promise<RefreshResult> {
   // 4. Build or update journal entries; only new or changed text goes to the AI.
   const toAnalyze: { entry: Entry; text: string }[] = [];
   for (const note of notes.values()) {
-    if (note.parentId !== journalId) continue;
+    if (!inJournal(note.parentId)) continue;
     if (note.isConflict) {
       if (file.entries[note.id]) {
         delete file.entries[note.id];
