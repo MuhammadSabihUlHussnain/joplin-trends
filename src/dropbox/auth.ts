@@ -25,11 +25,31 @@ function base64Url(bytes: Uint8Array): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export async function startDropboxLogin(): Promise<void> {
-  const appKey = settings.dropboxAppKey();
-  if (!appKey) throw new Error("Add your Dropbox app key in Settings first.");
+async function pkcePair() {
   const verifier = base64Url(crypto.getRandomValues(new Uint8Array(48)));
   const challenge = base64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+  return { verifier, challenge };
+}
+
+function requireAppKey(): string {
+  const appKey = settings.dropboxAppKey();
+  if (!appKey) throw new Error("Add your Dropbox app key in Settings first.");
+  return appKey;
+}
+
+/**
+ * True when Daybook runs as a home-screen app. There, a sign-in that leaves the app finishes in the
+ * browser instead (which has separate storage), so the copy-the-code flow is used.
+ */
+export function isHomeScreenApp(): boolean {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  return nav.standalone === true || matchMedia("(display-mode: standalone)").matches;
+}
+
+/** Sign in by leaving for Dropbox and coming straight back (normal browser tabs). */
+export async function startDropboxLogin(): Promise<void> {
+  const appKey = requireAppKey();
+  const { verifier, challenge } = await pkcePair();
   const state = base64Url(crypto.getRandomValues(new Uint8Array(16)));
   sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state }));
   const params = new URLSearchParams({
@@ -43,6 +63,49 @@ export async function startDropboxLogin(): Promise<void> {
     state,
   });
   location.assign(`${AUTHORIZE_URL}?${params}`);
+}
+
+const CODE_KEY = "jt.dropbox.pkce.code";
+
+/**
+ * Sign in by opening Dropbox's approval page in a new window; Dropbox then shows a code to paste back
+ * into the app. Nothing leaves the app's own storage, so it works from a home-screen app too.
+ */
+export async function startDropboxCodeLogin(): Promise<void> {
+  const appKey = requireAppKey();
+  const { verifier, challenge } = await pkcePair();
+  localStorage.setItem(CODE_KEY, verifier);
+  const params = new URLSearchParams({
+    client_id: appKey,
+    response_type: "code",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    token_access_type: "offline",
+    scope: SCOPES,
+  });
+  const url = `${AUTHORIZE_URL}?${params}`;
+  // A new tab/window keeps this page (and the code box) open; fall back to this tab if blocked.
+  const w = window.open(url, "_blank");
+  if (w) w.opener = null;
+  else location.assign(url);
+}
+
+/** Finish the copy-the-code sign-in with the code Dropbox showed. */
+export async function finishDropboxCodeLogin(code: string): Promise<void> {
+  const verifier = localStorage.getItem(CODE_KEY);
+  if (!verifier) throw new Error("Press Connect Dropbox first, then paste the code it shows.");
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", code: code.trim(), client_id: requireAppKey(), code_verifier: verifier }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(/invalid_grant|code/i.test(text) ? "That code didn't work. Codes only work once and expire after a few minutes, so press Connect Dropbox for a new one." : `Dropbox sign-in failed (${res.status}).`);
+  }
+  const json = (await res.json()) as { access_token: string; refresh_token: string; expires_in: number };
+  localStorage.removeItem(CODE_KEY);
+  saveTokens({ accessToken: json.access_token, refreshToken: json.refresh_token, expiresAt: Date.now() + json.expires_in * 1000 });
 }
 
 /** Call once on page load. Finishes a login if Dropbox just redirected back with ?code=. */

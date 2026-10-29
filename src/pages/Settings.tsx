@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CLAUDE_MODEL } from "../ai/provider";
-import { disconnectDropbox, isDropboxConnected, redirectUri, startDropboxLogin } from "../dropbox/auth";
+import { disconnectDropbox, isDropboxConnected, redirectUri } from "../dropbox/auth";
+import { ConnectDropbox } from "../ui/ConnectDropbox";
 import { type AiChoice, DATA_ROOT, settings } from "../settings";
 import type { DataSource } from "../state/useTrends";
 import type { Categories } from "../types";
@@ -17,7 +18,6 @@ export function Settings(props: {
   const [aiKey, setAiKey] = useState(settings.get("anthropicKey"));
   const [ai, setAi] = useState<AiChoice>(settings.aiProvider());
   const [connected, setConnected] = useState(isDropboxConnected());
-  const [error, setError] = useState<string | null>(null);
   const cats = props.categories ?? DEFAULT_CATEGORIES;
   const [time, setTime] = useState(cats.time.join("\n"));
   const [money, setMoney] = useState(cats.money.join("\n"));
@@ -59,24 +59,10 @@ export function Settings(props: {
               Disconnect Dropbox
             </button>
           ) : (
-            <button
-              className="link"
-              onClick={async () => {
-                settings.set("dropboxAppKey", appKey.trim());
-                setError(null);
-                try {
-                  await startDropboxLogin();
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : String(err));
-                }
-              }}
-            >
-              Connect Dropbox
-            </button>
+            <ConnectDropbox compact />
           )}
         </div>
       </section>
-      {error && <p className="footnote error">{error}</p>}
       <p className="footnote">
         Notes are saved as one Markdown file per day in <code>{DATA_ROOT}/notes</code>, and the results in <code>{DATA_ROOT}/data.json</code>.
         {!bakedKey && ` The Dropbox app needs this redirect URI: ${redirectUri()}`}

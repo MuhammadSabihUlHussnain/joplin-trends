@@ -8,6 +8,7 @@ import type { Categories, Entry, Override, TrendsFile } from "../types";
 import { colorFor, fmtHours, fmtMoney, longDate } from "../ui/format";
 import { CheckIcon, ChevronLeft, ChevronRight, MicIcon, MinusCircle, PlusIcon, SearchIcon } from "../ui/icons";
 import { appendSpoken, dictationSupported, startDictation } from "../voice/dictation";
+import { ConnectDropbox } from "../ui/ConnectDropbox";
 
 type SaveState = "loading" | "new" | "saved" | "dirty" | "saving" | "error" | "conflict" | "readonly";
 
@@ -134,12 +135,10 @@ export function Notes({ file, mode, selected, wide, onSelect, onCategory }: Note
         <section className="group welcome">
           <h2>Write your first note</h2>
           <p className="muted">
-            Notes are saved as plain files in your own Dropbox, one per day. Connect Dropbox in Settings to start, or look around with
-            the sample data first.
+            Notes are saved as plain files in your own Dropbox, one per day. Connect it to start, or look around with the sample data
+            first (in Settings).
           </p>
-          <a className="btn primary" href="#/settings">
-            Open Settings
-          </a>
+          <ConnectDropbox />
         </section>
       </div>
     );
