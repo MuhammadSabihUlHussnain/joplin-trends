@@ -9,7 +9,7 @@ import { colorFor, fmtHours, fmtMoney, longDate } from "../ui/format";
 import { CheckIcon, ChevronLeft, ChevronRight, MicIcon, MinusCircle, PlusIcon, SearchIcon } from "../ui/icons";
 import { appendSpoken, dictationSupported, startDictation } from "../voice/dictation";
 
-type SaveState = "loading" | "saved" | "dirty" | "saving" | "error" | "conflict" | "readonly";
+type SaveState = "loading" | "new" | "saved" | "dirty" | "saving" | "error" | "conflict" | "readonly";
 
 const DRAFT_PREFIX = "jt.draft.";
 
@@ -287,7 +287,7 @@ function Editor(props: {
         const draft = readDraft(date);
         latest.current = draft ?? loaded.draft;
         setNote(latest.current);
-        setState(draft ? "dirty" : "saved");
+        setState(draft ? "dirty" : loaded.rev ? "saved" : "new");
         if (dictateOnOpen) {
           dictateOnOpen = false;
           startVoice();
@@ -313,7 +313,8 @@ function Editor(props: {
     // A note that was never saved and is still blank isn't written, so opening a day doesn't create a file.
     if (rev.current === null && isBlank(n)) {
       writeDraft(null, n.date);
-      setState("saved");
+      setState("new");
+      props.onDraft();
       return;
     }
     setState("saving");
@@ -606,6 +607,7 @@ function Editor(props: {
 function SaveBadge({ state }: { state: SaveState }) {
   const label: Record<SaveState, string> = {
     loading: "",
+    new: "",
     saved: "Saved",
     dirty: "Unsaved changes",
     saving: "Saving…",
