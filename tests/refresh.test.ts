@@ -181,3 +181,23 @@ describe("refresh", () => {
     expect(res.file.entries["2026-10-28"].record.activities[0].category).toBe("Health");
   });
 });
+
+describe("the rename to Daybook", () => {
+  it("moves /Joplin Trends to /Daybook once and keeps everything in it", async () => {
+    dbx = new FakeDropbox();
+    dbx.put("/Joplin Trends/notes/2026-10-27.md", note("2026-10-27", { journal: "Old folder." }));
+    dbx.put("/Joplin Trends/data.json", JSON.stringify({ version: 2, notesCursor: null, notes: {}, entries: {}, overrides: [{ kind: "activity", match: "gym", category: "Health" }], categories: { time: ["Exercise", "Health", "Other"], money: ["Other"] }, updatedAt: "" }));
+    const res = await refresh({ dropbox: dbx, ai });
+    expect([...dbx.files.keys()].some((k) => k.startsWith("/joplin trends/"))).toBe(false);
+    expect(dbx.files.has(notePath("2026-10-27").toLowerCase())).toBe(true);
+    expect(res.file.overrides).toHaveLength(1);
+    expect(Object.keys(res.file.entries)).toEqual(["2026-10-27"]);
+  });
+
+  it("leaves both folders alone when /Daybook already exists", async () => {
+    dbx.put("/Joplin Trends/notes/2026-01-01.md", note("2026-01-01", { journal: "stray" }));
+    await run();
+    expect(dbx.files.has("/joplin trends/notes/2026-01-01.md")).toBe(true);
+    expect(Object.keys(saved().entries).sort()).toEqual(["2026-10-26", "2026-10-27"]);
+  });
+});

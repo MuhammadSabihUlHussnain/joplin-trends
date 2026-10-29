@@ -58,6 +58,20 @@ export class FakeDropbox implements DropboxApi {
     return f ? { text: f.text, rev: String(f.rev) } : null;
   }
 
+  async move(from: string, to: string) {
+    const f = from.toLowerCase().replace(/\/+$/, "");
+    const t = to.toLowerCase().replace(/\/+$/, "");
+    const inside = (root: string) => [...this.files.keys()].filter((k) => k === root || k.startsWith(`${root}/`));
+    if (inside(t).length) throw new DropboxError("conflict", 409, "to/conflict/folder/");
+    const moving = inside(f);
+    if (!moving.length) throw new DropboxError("not found", 409, "from_lookup/not_found/");
+    for (const k of moving) {
+      const file = this.files.get(k)!;
+      this.remove(k);
+      this.put(t + k.slice(f.length), file.text);
+    }
+  }
+
   async upload(path: string, text: string, rev: string | null) {
     const p = path.toLowerCase();
     const existing = this.files.get(p);

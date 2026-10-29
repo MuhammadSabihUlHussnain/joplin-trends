@@ -6,7 +6,8 @@ import { forceSaveNote, listNoteDates, loadNote, NoteConflictError, saveNote } f
 import { dropboxClient } from "../state/useTrends";
 import type { Categories, Entry, Override, TrendsFile } from "../types";
 import { colorFor, fmtHours, fmtMoney, longDate } from "../ui/format";
-import { CheckIcon, ChevronLeft, ChevronRight, MinusCircle, PlusIcon, SearchIcon } from "../ui/icons";
+import { CheckIcon, ChevronLeft, ChevronRight, MicIcon, MinusCircle, PlusIcon, SearchIcon } from "../ui/icons";
+import { appendSpoken, dictationSupported, startDictation } from "../voice/dictation";
 
 type SaveState = "loading" | "saved" | "dirty" | "saving" | "error" | "conflict" | "readonly";
 
@@ -28,6 +29,22 @@ function writeDraft(note: NoteDraft | null, date: string) {
     /* storage blocked */
   }
 }
+
+function datesWithDrafts(): Set<string> {
+  const out = new Set<string>();
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(DRAFT_PREFIX)) out.add(k.slice(DRAFT_PREFIX.length));
+    }
+  } catch {
+    /* storage blocked */
+  }
+  return out;
+}
+
+/** Set by the list's mic button so the editor starts listening as soon as today's note opens. */
+let dictateOnOpen = false;
 
 function draftFromEntry(e: Entry): NoteDraft {
   return fromMarkdown(
@@ -101,7 +118,12 @@ export function Notes({ file, mode, selected, wide, onSelect, onCategory }: Note
     groups[groups.length - 1].dates.push(d);
   }
 
-  const onSaved = useCallback((date: string) => setDates((ds) => (ds.includes(date) ? ds : [date, ...ds])), []);
+  const [drafts, setDrafts] = useState<Set<string>>(datesWithDrafts);
+  const onSaved = useCallback((date: string) => {
+    setDates((ds) => (ds.includes(date) ? ds : [date, ...ds]));
+    setDrafts(datesWithDrafts());
+  }, []);
+  const onDraft = useCallback(() => setDrafts(datesWithDrafts()), []);
 
   if (mode === "disconnected") {
     return (
@@ -128,9 +150,24 @@ export function Notes({ file, mode, selected, wide, onSelect, onCategory }: Note
       <header className="page-head compact">
         <h1>Notes</h1>
         {mode === "dropbox" && (
-          <button className="icon-btn" aria-label="Today's note" title="Today's note" onClick={() => onSelect(today)}>
-            <PlusIcon />
-          </button>
+          <span className="head-actions">
+            {dictationSupported() && (
+              <button
+                className="icon-btn"
+                aria-label="Voice note for today"
+                title="Voice note for today"
+                onClick={() => {
+                  dictateOnOpen = true;
+                  onSelect(today);
+                }}
+              >
+                <MicIcon />
+              </button>
+            )}
+            <button className="icon-btn" aria-label="Today's note" title="Today's note" onClick={() => onSelect(today)}>
+              <PlusIcon />
+            </button>
+          </span>
         )}
       </header>
       <label className="search">
@@ -154,7 +191,10 @@ export function Notes({ file, mode, selected, wide, onSelect, onCategory }: Note
                 <li key={d}>
                   <button className={`row ${selected === d ? "selected" : ""}`} onClick={() => onSelect(d)}>
                     <span className="row-main">
-                      <span className="row-title">{d === today ? "Today" : longDate(d)}</span>
+                      <span className="row-title">
+                        {d === today ? "Today" : longDate(d)}
+                        {drafts.has(d) && <span className="unsaved-tag">Unsaved</span>}
+                      </span>
                       <span className="row-sub">{preview}</span>
                     </span>
                     {e?.record.mood != null && <span className="mood-pill">{Math.round(e.record.mood)}</span>}
@@ -181,6 +221,7 @@ export function Notes({ file, mode, selected, wide, onSelect, onCategory }: Note
       onBack={() => onSelect(null)}
       onNavigate={onSelect}
       onSaved={onSaved}
+      onDraft={onDraft}
       onCategory={onCategory}
     />
   ) : null;
@@ -212,6 +253,7 @@ function Editor(props: {
   onBack: () => void;
   onNavigate: (date: string) => void;
   onSaved: (date: string) => void;
+  onDraft: () => void;
   onCategory: NotesProps["onCategory"];
 }) {
   const { date, readOnly, entry } = props;
@@ -222,8 +264,12 @@ function Editor(props: {
   const [savedThisVisit, setSavedThisVisit] = useState(false);
   const rev = useRef<string | null>(null);
   const latest = useRef<NoteDraft | null>(null);
-  const timer = useRef<number | undefined>(undefined);
-  const saving = useRef<Promise<void> | null>(null);
+  const saving = useRef(false);
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState("");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const dictation = useRef<{ stop: () => void } | null>(null);
+  const newParagraph = useRef(true);
 
   // Load the note (or today's blank template); an unsaved local draft wins if one is left over.
   useEffect(() => {
@@ -242,7 +288,10 @@ function Editor(props: {
         latest.current = draft ?? loaded.draft;
         setNote(latest.current);
         setState(draft ? "dirty" : "saved");
-        if (draft) schedule();
+        if (dictateOnOpen) {
+          dictateOnOpen = false;
+          startVoice();
+        }
       })
       .catch((err: Error) => {
         if (cancelled) return;
@@ -258,10 +307,9 @@ function Editor(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, readOnly]);
 
-  const flush = useCallback(async () => {
-    window.clearTimeout(timer.current);
+  const save = useCallback(async () => {
     const n = latest.current;
-    if (!n || readOnly) return;
+    if (!n || readOnly || saving.current) return;
     // A note that was never saved and is still blank isn't written, so opening a day doesn't create a file.
     if (rev.current === null && isBlank(n)) {
       writeDraft(null, n.date);
@@ -269,6 +317,7 @@ function Editor(props: {
       return;
     }
     setState("saving");
+    saving.current = true;
     try {
       const res = await saveNote(dropboxClient(), n, rev.current);
       rev.current = res.rev;
@@ -288,24 +337,35 @@ function Editor(props: {
         setState("error");
         setError(`Not saved to Dropbox yet (kept on this device): ${err instanceof Error ? err.message : String(err)}`);
       }
+    } finally {
+      saving.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [readOnly]);
 
-  const schedule = useCallback(() => {
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      saving.current = (saving.current ?? Promise.resolve()).then(flush);
-    }, 1200);
-  }, [flush]);
+  // Nothing goes to Dropbox until Save. Unsaved changes stay on this device as a draft, and the
+  // browser warns before closing the tab with unsaved changes.
+  useEffect(() => {
+    const dirty = state === "dirty" || state === "error";
+    const warn = (e: BeforeUnloadEvent) => {
+      if (dirty) e.preventDefault();
+    };
+    const key = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        void save();
+      }
+    };
+    addEventListener("beforeunload", warn);
+    addEventListener("keydown", key);
+    return () => {
+      removeEventListener("beforeunload", warn);
+      removeEventListener("keydown", key);
+    };
+  }, [state, save]);
 
-  // Save right away when leaving the note.
-  useEffect(
-    () => () => {
-      if (latest.current && !readOnly) void flush();
-    },
-    [flush, readOnly],
-  );
+  // Stop listening when the note closes.
+  useEffect(() => () => dictation.current?.stop(), []);
 
   const update = (fn: (n: NoteDraft) => NoteDraft) => {
     if (readOnly || !note || state === "conflict") return;
@@ -314,8 +374,39 @@ function Editor(props: {
     setNote(next);
     setState("dirty");
     writeDraft(next, next.date);
-    schedule();
+    props.onDraft();
   };
+
+  // Each finished sentence is added to the journal straight away; the note stays open and unsaved
+  // so more can be typed or said before pressing Save.
+  function startVoice() {
+    if (readOnly || dictation.current) return;
+    setVoiceError(null);
+    newParagraph.current = true;
+    setListening(true);
+    dictation.current = startDictation({
+      onInterim: setInterim,
+      onFinal: (text) => {
+        const n = latest.current;
+        if (!n) return;
+        const next = { ...n, journal: appendSpoken(n.journal, text, newParagraph.current) };
+        newParagraph.current = false;
+        latest.current = next;
+        setNote(next);
+        setState((st) => (st === "conflict" ? st : "dirty"));
+        writeDraft(next, next.date);
+        props.onDraft();
+      },
+      onError: setVoiceError,
+      onEnd: () => {
+        dictation.current = null;
+        setListening(false);
+        setInterim("");
+      },
+    });
+  }
+
+  const stopVoice = () => dictation.current?.stop();
 
   const resolve = async (keep: "mine" | "theirs") => {
     if (!remote || !latest.current) return;
@@ -355,6 +446,11 @@ function Editor(props: {
         )}
         <span className="spacer" />
         <SaveBadge state={state} />
+        {!readOnly && (
+          <button className="btn primary save-btn" disabled={!(state === "dirty" || state === "error") || listening} onClick={() => void save()}>
+            Save
+          </button>
+        )}
         <button className="icon-btn" aria-label="Previous day" onClick={() => props.onNavigate(addDays(date, -1))}>
           <ChevronLeft />
         </button>
@@ -476,7 +572,22 @@ function Editor(props: {
           </section>
 
           <section className="group">
-            <h3 className="group-title">Journal</h3>
+            <div className="group-head">
+              <h3 className="group-title">Journal</h3>
+              {!readOnly && dictationSupported() && (
+                <button className={`mic-btn ${listening ? "on" : ""}`} onClick={listening ? stopVoice : startVoice} aria-pressed={listening}>
+                  <MicIcon size={18} />
+                  {listening ? "Stop" : "Voice"}
+                </button>
+              )}
+            </div>
+            {listening && (
+              <p className="listening">
+                <span className="pulse" aria-hidden />
+                {interim ? <span className="interim">{interim}</span> : "Listening. Speak and your words go into the journal. Press Stop when you're done, then Save."}
+              </p>
+            )}
+            {voiceError && <p className="footnote error">{voiceError}</p>}
             <AutoTextarea
               value={note.journal}
               disabled={readOnly}
@@ -496,7 +607,7 @@ function SaveBadge({ state }: { state: SaveState }) {
   const label: Record<SaveState, string> = {
     loading: "",
     saved: "Saved",
-    dirty: "Editing…",
+    dirty: "Unsaved changes",
     saving: "Saving…",
     error: "Not saved",
     conflict: "Conflict",

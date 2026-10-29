@@ -1,4 +1,4 @@
-// Shared data model. Everything here is stored in the user's Dropbox as /Joplin Trends/data.json.
+// Shared data model. Everything here is stored in the user's Dropbox as /Daybook/data.json.
 
 export type Source = "template" | "ai";
 

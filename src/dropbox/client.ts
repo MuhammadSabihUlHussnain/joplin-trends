@@ -33,6 +33,8 @@ export interface DropboxApi {
   listFolderContinue(cursor: string): Promise<DbxListing>;
   download(path: string): Promise<{ text: string; rev: string } | null>;
   upload(path: string, text: string, rev: string | null): Promise<{ rev: string }>;
+  /** Renames a file or folder. Fails with a conflict if `to` exists, or not_found if `from` doesn't. */
+  move(from: string, to: string): Promise<void>;
 }
 
 // Dropbox-API-Arg must be HTTP-header safe: escape every non-ASCII character.
@@ -104,6 +106,19 @@ export class HttpDropbox implements DropboxApi {
     const json = (await res.json()) as { rev: string };
     return { rev: json.rev };
   }
+
+  move(from: string, to: string) {
+    return moveViaHttp(this.token, from, to);
+  }
+}
+
+export async function moveViaHttp(token: () => Promise<string>, from: string, to: string): Promise<void> {
+  const res = await fetch("https://api.dropboxapi.com/2/files/move_v2", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from_path: from, to_path: to, autorename: false, allow_ownership_transfer: false }),
+  });
+  if (!res.ok) throw await dropboxError(res, "files/move_v2");
 }
 
 async function dropboxError(res: Response, endpoint: string): Promise<DropboxError> {

@@ -1,5 +1,6 @@
 import { AiError, type AiProvider } from "../ai/provider";
 import { type DbxFile, type DropboxApi, isConflict, isNotFound } from "../dropbox/client";
+import { ensureDataRoot } from "../dropbox/dataRoot";
 import { parseTemplate } from "../entry/template";
 import { dateFromFileName, fromMarkdown, isBlank, NOTES_DIR, notePath, toMarkdown } from "../notes/format";
 import { DATA_FILE } from "../settings";
@@ -66,6 +67,7 @@ interface LegacyFile {
 
 /** Reads data.json from Dropbox. Returns an empty file the first time. */
 export async function loadTrendsFile(dropbox: DropboxApi): Promise<{ file: TrendsFile; rev: string | null; legacy: Entry[] }> {
+  await ensureDataRoot(dropbox);
   const res = await dropbox.download(DATA_FILE);
   if (!res) return { file: emptyTrendsFile(), rev: null, legacy: [] };
   let parsed: TrendsFile | LegacyFile;

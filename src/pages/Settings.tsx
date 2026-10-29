@@ -176,7 +176,8 @@ export function Settings(props: {
       <section className="group">
         <p className="small">
           This page runs entirely in your browser. Your notes go only to your Dropbox and, when you press Refresh, to the AI you chose.
-          Keys and sign-ins are kept in this browser, so each device connects once.
+          Keys and sign-ins are kept in this browser, so each device connects once. Voice notes use your browser's own speech
+          recognition (Google's in Chrome, Apple's in Safari); the app never records or stores audio, only the text.
         </p>
       </section>
     </div>

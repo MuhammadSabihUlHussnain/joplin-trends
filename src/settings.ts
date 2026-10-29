@@ -40,5 +40,7 @@ export const settings = {
 };
 
 /** Everything the app stores lives under this folder in the user's Dropbox. */
-export const DATA_ROOT = "/Joplin Trends";
+export const DATA_ROOT = "/Daybook";
+/** Where it lived when the app was called Joplin Trends; moved to DATA_ROOT on first use. */
+export const LEGACY_DATA_ROOT = "/Joplin Trends";
 export const DATA_FILE = `${DATA_ROOT}/data.json`;

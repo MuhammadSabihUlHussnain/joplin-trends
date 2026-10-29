@@ -11,6 +11,7 @@ import { Trends, type TrendsView } from "./pages/Trends";
 import { useTrends } from "./state/useTrends";
 import type { TrendsFile } from "./types";
 import { GearIcon, NoteIcon, OverviewIcon, RefreshIcon, SparklesIcon, TrendsIcon } from "./ui/icons";
+import { AppLogo } from "./ui/logo";
 
 export interface Analysis {
   file: TrendsFile;
@@ -174,10 +175,8 @@ export default function App() {
       {wide && (
         <aside className="sidebar">
           <div className="brand">
-            <span className="app-icon" aria-hidden>
-              ◐
-            </span>
-            Joplin Trends
+            <AppLogo size={30} />
+            Daybook
           </div>
           <nav>
             {TABS.map(({ id, label, Icon }) => (

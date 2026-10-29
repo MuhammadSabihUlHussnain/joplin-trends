@@ -30,8 +30,11 @@ async function aiProvider(): Promise<AiProvider | null> {
   return new ClaudeProvider(key);
 }
 
+// One client per page, so the one-time folder rename runs once.
+let client: HttpDropbox | null = null;
 export function dropboxClient() {
-  return new HttpDropbox(dropboxAccessToken);
+  client ??= new HttpDropbox(dropboxAccessToken);
+  return client;
 }
 const dropbox = dropboxClient;
 

@@ -2,6 +2,7 @@
 // editing the same day can't silently overwrite each other.
 
 import { type DropboxApi, isConflict, isNotFound } from "../dropbox/client";
+import { ensureDataRoot } from "../dropbox/dataRoot";
 import { dateFromFileName, emptyNote, fromMarkdown, type NoteDraft, NOTES_DIR, notePath, toMarkdown } from "./format";
 
 export interface LoadedNote {
@@ -20,6 +21,7 @@ export class NoteConflictError extends Error {
 /** Dates that have a note file, newest first. */
 export async function listNoteDates(dropbox: DropboxApi): Promise<string[]> {
   const dates: string[] = [];
+  await ensureDataRoot(dropbox);
   try {
     let listing = await dropbox.listFolder(NOTES_DIR);
     for (;;) {
@@ -37,6 +39,7 @@ export async function listNoteDates(dropbox: DropboxApi): Promise<string[]> {
 }
 
 export async function loadNote(dropbox: DropboxApi, date: string): Promise<LoadedNote> {
+  await ensureDataRoot(dropbox);
   const res = await dropbox.download(notePath(date));
   if (!res) return { draft: emptyNote(date), rev: null, markdown: null };
   return { draft: fromMarkdown(date, res.text), rev: res.rev, markdown: res.text };
@@ -44,6 +47,7 @@ export async function loadNote(dropbox: DropboxApi, date: string): Promise<Loade
 
 export async function saveNote(dropbox: DropboxApi, draft: NoteDraft, rev: string | null): Promise<{ rev: string; markdown: string }> {
   const markdown = toMarkdown(draft);
+  await ensureDataRoot(dropbox);
   try {
     const res = await dropbox.upload(notePath(draft.date), markdown, rev);
     return { rev: res.rev, markdown };
