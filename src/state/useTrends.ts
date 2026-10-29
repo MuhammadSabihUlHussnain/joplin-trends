@@ -22,7 +22,7 @@ export interface TrendsState {
   lastStats: RefreshStats | null;
 }
 
-/** The Claude SDK is only downloaded when a Refresh actually needs it. */
+/** The AI SDK is only downloaded when a Refresh actually needs it. */
 async function aiProvider(): Promise<AiProvider | null> {
   const key = settings.get("anthropicKey").trim();
   if (!key) return null;
@@ -30,9 +30,10 @@ async function aiProvider(): Promise<AiProvider | null> {
   return new ClaudeProvider(key);
 }
 
-function dropbox() {
+export function dropboxClient() {
   return new HttpDropbox(dropboxAccessToken);
 }
+const dropbox = dropboxClient;
 
 export function useTrends() {
   const [state, setState] = useState<TrendsState>({
@@ -53,27 +54,6 @@ export function useTrends() {
     patch({ file, rev, source });
   };
 
-  // On open: show the cached copy at once, then pick up data.json from Dropbox (written by any
-  // device). This only reads the app's own file; Joplin's notes are read when you press Refresh.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const cached = await localCache.load();
-      if (cancelled) return;
-      if (cached) patch({ file: cached.file, rev: cached.rev, source: cached.demo ? "demo" : "dropbox" });
-      if (cached?.demo || !isDropboxConnected()) return;
-      try {
-        const remote = await loadTrendsFile(dropbox());
-        if (!cancelled && remote.rev) remember(remote.file, remote.rev, "dropbox");
-      } catch (err) {
-        if (!cancelled) patch({ error: err instanceof Error ? err.message : String(err) });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const refresh = useCallback(async () => {
     if (busy.current) return;
     if (!isDropboxConnected()) {
@@ -86,8 +66,6 @@ export function useTrends() {
       const res = await runRefresh({
         dropbox: dropbox(),
         ai: await aiProvider(),
-        joplinPath: settings.get("joplinPath") || "/Apps/Joplin",
-        notebookName: settings.get("journalNotebook") || "Journal",
         onProgress: (progress) => patch({ progress }),
       });
       remember(res.file, res.rev, "dropbox");
@@ -99,6 +77,29 @@ export function useTrends() {
       patch({ busy: false, progress: null });
     }
   }, []);
+
+  // On open: show the cached copy at once, then pick up data.json from Dropbox (written by any
+  // device). Notes themselves are only re-read when you press Refresh.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const cached = await localCache.load();
+      if (cancelled) return;
+      if (cached && cached.file.version === 2) patch({ file: cached.file, rev: cached.rev, source: cached.demo ? "demo" : "dropbox" });
+      if (cached?.demo || !isDropboxConnected()) return;
+      try {
+        const remote = await loadTrendsFile(dropbox());
+        if (cancelled) return;
+        if (remote.legacy.length) void refresh(); // a file from the Joplin era: move its entries into Notes now
+        else if (remote.rev) remember(remote.file, remote.rev, "dropbox");
+      } catch (err) {
+        if (!cancelled) patch({ error: err instanceof Error ? err.message : String(err) });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh]);
 
   /** Save a changed file (category fix, category lists) to Dropbox, or locally for sample data. */
   const commit = useCallback(

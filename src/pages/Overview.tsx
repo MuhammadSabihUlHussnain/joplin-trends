@@ -82,7 +82,7 @@ export function Overview({ a }: { a: Analysis }) {
       <section className="card">
         <div className="card-head">
           <h2>Where the hours went</h2>
-          <a href="#/time">Details</a>
+          <a href="#/trends/time">Details</a>
         </div>
         <StackedWeeks rows={recent} categories={file.categories.time} unit="hours" />
       </section>

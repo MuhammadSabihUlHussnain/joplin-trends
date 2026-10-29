@@ -1,43 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { entryDate, parseDuration, parseMoney, parseTemplate } from "../src/entry/template";
-import { isItemFileName, parseJoplinItem } from "../src/joplin/parseItem";
 import { mergeRecord } from "../src/sync/merge";
 import { DEFAULT_CATEGORIES, type Extraction } from "../src/types";
-import { joplinFolder, joplinNote } from "./helpers";
-
-const NOTEBOOK = "a".repeat(32);
-const NOTE = "b".repeat(32);
-
-describe("parseJoplinItem", () => {
-  it("reads a note whose body contains blank lines", () => {
-    const raw = joplinNote({ id: NOTE, parentId: NOTEBOOK, title: "2026-10-27", body: "first para\n\nsecond para\n\n## Money\n- $5 coffee" });
-    const item = parseJoplinItem(raw);
-    expect(item).toMatchObject({ id: NOTE, type: 1, parentId: NOTEBOOK, title: "2026-10-27", isConflict: false, encrypted: false });
-    expect(item.body).toBe("first para\n\nsecond para\n\n## Money\n- $5 coffee");
-    expect(item.createdTime).toBe("2026-10-20T14:00:00.000Z");
-  });
-
-  it("reads a notebook, which has no body", () => {
-    const item = parseJoplinItem(joplinFolder(NOTEBOOK, "Journal"));
-    expect(item).toMatchObject({ type: 2, title: "Journal", body: "" });
-  });
-
-  it("flags conflict copies and encrypted items", () => {
-    expect(parseJoplinItem(joplinNote({ id: NOTE, parentId: NOTEBOOK, title: "x", body: "y", conflict: true })).isConflict).toBe(true);
-    expect(parseJoplinItem(joplinNote({ id: NOTE, parentId: NOTEBOOK, title: "x", body: "", encrypted: true })).encrypted).toBe(true);
-  });
-
-  it("handles Windows line endings and trailing newlines", () => {
-    const raw = `${joplinNote({ id: NOTE, parentId: NOTEBOOK, title: "t", body: "hello" }).replace(/\n/g, "\r\n")}\r\n\r\n`;
-    expect(parseJoplinItem(raw).body).toBe("hello");
-  });
-
-  it("rejects files that aren't Joplin items", () => {
-    expect(() => parseJoplinItem('{"version": 3}')).toThrow();
-    expect(isItemFileName(`${NOTE}.md`)).toBe(true);
-    expect(isItemFileName("info.json")).toBe(false);
-  });
-});
 
 describe("template parsing", () => {
   it("reads durations in every common form", () => {
@@ -70,7 +34,7 @@ describe("template parsing", () => {
       { merchant: "chipotle", amount: 12 },
       { merchant: "gas", amount: 45 },
     ]);
-    expect(t.freeText).toContain("Saw Ali at the library.");
+    expect(t.freeText).toBe("Long day. Saw Ali at the library."); // the "## Journal" heading itself isn't journal text
     expect(t.freeText).not.toContain("chipotle");
   });
 

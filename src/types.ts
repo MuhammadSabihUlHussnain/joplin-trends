@@ -61,7 +61,7 @@ export interface Extraction {
 export type EntryStatus = "ok" | "pending" | "error" | "no-ai";
 
 export interface Entry {
-  id: string; // Joplin note id
+  id: string; // the note's date, YYYY-MM-DD
   title: string;
   date: string;
   updatedTime: string;
@@ -81,12 +81,9 @@ export interface Override {
   category: string;
 }
 
-/** What we remember about each Joplin item so unchanged files are never downloaded twice. */
-export interface ItemMeta {
-  type: number; // Joplin type_: 1 note, 2 notebook
-  parentId: string;
+/** What we remember about each note file so unchanged notes are never downloaded twice. */
+export interface NoteMeta {
   dbxHash: string; // Dropbox content_hash
-  title?: string; // only kept for notebooks
 }
 
 export interface Categories {
@@ -95,13 +92,11 @@ export interface Categories {
 }
 
 export interface TrendsFile {
-  version: 1;
-  cursor: string | null;
-  /** The Joplin folder the cursor belongs to; a different folder in Settings means a full re-list. */
-  cursorPath: string | null;
-  journalFolderId: string | null;
-  items: Record<string, ItemMeta>;
-  entries: Record<string, Entry>;
+  version: 2;
+  /** Dropbox listing cursor for the notes folder, so each Refresh only sees what changed. */
+  notesCursor: string | null;
+  notes: Record<string, NoteMeta>; // by date
+  entries: Record<string, Entry>; // by date
   overrides: Override[];
   categories: Categories;
   updatedAt: string;
@@ -137,11 +132,9 @@ export const DEFAULT_CATEGORIES: Categories = {
 
 export function emptyTrendsFile(): TrendsFile {
   return {
-    version: 1,
-    cursor: null,
-    cursorPath: null,
-    journalFolderId: null,
-    items: {},
+    version: 2,
+    notesCursor: null,
+    notes: {},
     entries: {},
     overrides: [],
     categories: structuredClone(DEFAULT_CATEGORIES),

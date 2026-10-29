@@ -1,4 +1,4 @@
-// Sample data so the dashboard can be explored before Dropbox and Joplin are set up.
+// Sample data so the app can be explored before Dropbox is connected.
 // It has a few real patterns built in: gym days lift mood, short nights drag it down,
 // and food spending doubles in an exam week.
 
@@ -50,12 +50,19 @@ export function demoFile(days = 70): TrendsFile {
     if (date.endsWith("-01")) e("phone bill", "Bills", 45);
 
     let mood = 6.1 + (gym ? 1.6 : 0) + 0.7 * (sleep - 6.5) + (weekend ? 0.5 : 0) - (exam ? 0.8 : 0) + gauss() * 0.9;
-    mood = Math.round(Math.min(10, Math.max(1, mood)) * 10) / 10;
-    const energy = Math.round(Math.min(10, Math.max(1, mood - 0.5 + gauss() * 0.8)) * 10) / 10;
+    mood = Math.round(Math.min(10, Math.max(1, mood)));
+    const energy = Math.round(Math.min(10, Math.max(1, mood - 0.5 + gauss() * 0.8)));
     const people = [...(weekend && rand() < 0.6 ? ["Ali"] : []), ...(rand() < 0.25 ? ["Zain"] : [])];
     const themes = [...(exam ? ["exams"] : []), ...(rand() < 0.3 ? ["fundraising"] : []), ...(rand() < 0.2 ? ["health"] : [])];
 
-    const id = i.toString(16).padStart(32, "d");
+    const id = date;
+    const journal = [
+      exam ? "Exam week, so most of the day went to prep." : weekend ? "Slower day." : "Classes, then work on Infalytics.",
+      gym ? "Got to the gym, which helped." : sleep < 6 ? "Running on not much sleep." : "",
+      people.includes("Ali") ? "Caught up with Ali in the evening." : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
     // Stored the way a real Refresh stores it (template numbers + an AI result), so category fixes
     // recompute demo entries exactly like real ones.
     const typed = activities.filter((x) => x.source === "template");
@@ -74,7 +81,7 @@ export function demoFile(days = 70): TrendsFile {
         sleep,
         time: typed.map((x) => ({ name: x.name, hours: x.hours })),
         money: typedMoney.map((x) => ({ merchant: x.merchant, amount: x.amount })),
-        freeText: "",
+        freeText: journal,
       },
       ai: {
         mood,
@@ -90,7 +97,7 @@ export function demoFile(days = 70): TrendsFile {
       },
       record: null as unknown as Entry["record"],
     };
-    file.entries[id] = entry;
+    file.entries[date] = entry;
   }
   recomputeRecords(file);
   file.updatedAt = new Date().toISOString();

@@ -1,21 +1,10 @@
 import { useState } from "react";
 import { CLAUDE_MODEL } from "../ai/provider";
 import { disconnectDropbox, isDropboxConnected, redirectUri, startDropboxLogin } from "../dropbox/auth";
-import { ENTRY_TEMPLATE } from "../entry/template";
-import { settings, DATA_FILE } from "../settings";
+import { type AiChoice, DATA_ROOT, settings } from "../settings";
 import type { DataSource } from "../state/useTrends";
 import type { Categories } from "../types";
 import { DEFAULT_CATEGORIES } from "../types";
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      {children}
-      {hint && <small className="muted">{hint}</small>}
-    </label>
-  );
-}
 
 export function Settings(props: {
   categories: Categories | null;
@@ -25,53 +14,55 @@ export function Settings(props: {
   onClear: () => void;
 }) {
   const [appKey, setAppKey] = useState(settings.get("dropboxAppKey"));
-  const [path, setPath] = useState(settings.get("joplinPath"));
-  const [notebook, setNotebook] = useState(settings.get("journalNotebook"));
   const [aiKey, setAiKey] = useState(settings.get("anthropicKey"));
+  const [ai, setAi] = useState<AiChoice>(settings.aiProvider());
   const [connected, setConnected] = useState(isDropboxConnected());
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cats = props.categories ?? DEFAULT_CATEGORIES;
   const [time, setTime] = useState(cats.time.join("\n"));
   const [money, setMoney] = useState(cats.money.join("\n"));
+  const [savedCats, setSavedCats] = useState(false);
   const bakedKey = Boolean(import.meta.env.VITE_DROPBOX_APP_KEY);
 
-  const persist = (key: Parameters<typeof settings.set>[0], value: string) => settings.set(key, value.trim());
+  const chooseAi = (v: AiChoice) => {
+    setAi(v);
+    settings.set("aiProvider", v);
+  };
 
   return (
-    <>
-      <section className="card">
-        <h2>1. Dropbox</h2>
-        <p className="muted small">
-          Joplin syncs your notes to Dropbox, and this app reads them from there. It saves its results to <code>{DATA_FILE}</code> and
-          never writes into Joplin's folder.
-        </p>
+    <div className="page narrow">
+      <header className="page-head">
+        <h1>Settings</h1>
+      </header>
+
+      <h3 className="section-label">Storage</h3>
+      <section className="group list">
+        <div className="list-row">
+          <span className="list-title">Dropbox</span>
+          {connected ? <span className="status ok">Connected</span> : <span className="status">Not connected</span>}
+        </div>
         {!bakedKey && (
-          <Field
-            label="Dropbox app key"
-            hint={`Create an app at dropbox.com/developers/apps with "Full Dropbox" access and the scopes files.metadata.read, files.content.read and files.content.write. Add this redirect URI: ${redirectUri()}`}
-          >
-            <input value={appKey} onChange={(e) => setAppKey(e.target.value)} onBlur={() => persist("dropboxAppKey", appKey)} placeholder="e.g. a1b2c3d4e5f6g7h" />
-          </Field>
+          <label className="list-row input-row">
+            <span className="list-title">App key</span>
+            <input value={appKey} onChange={(e) => setAppKey(e.target.value)} onBlur={() => settings.set("dropboxAppKey", appKey.trim())} placeholder="From dropbox.com/developers" />
+          </label>
         )}
-        <div className="row">
+        <div className="list-row">
           {connected ? (
-            <>
-              <span className="ok">● Connected</span>
-              <button
-                className="secondary"
-                onClick={() => {
-                  disconnectDropbox();
-                  setConnected(false);
-                }}
-              >
-                Disconnect
-              </button>
-            </>
+            <button
+              className="link destructive"
+              onClick={() => {
+                disconnectDropbox();
+                setConnected(false);
+              }}
+            >
+              Disconnect Dropbox
+            </button>
           ) : (
             <button
+              className="link"
               onClick={async () => {
-                persist("dropboxAppKey", appKey);
+                settings.set("dropboxAppKey", appKey.trim());
                 setError(null);
                 try {
                   await startDropboxLogin();
@@ -84,68 +75,69 @@ export function Settings(props: {
             </button>
           )}
         </div>
-        {error && <p className="error">{error}</p>}
-        <Field label="Joplin sync folder in Dropbox" hint="Joplin uses /Apps/Joplin unless you changed it.">
-          <input value={path} onChange={(e) => setPath(e.target.value)} onBlur={() => persist("joplinPath", path || "/Apps/Joplin")} />
-        </Field>
-        <Field label="Journal notebook" hint="Only notes in this Joplin notebook are read.">
-          <input value={notebook} onChange={(e) => setNotebook(e.target.value)} onBlur={() => persist("journalNotebook", notebook || "Journal")} />
-        </Field>
       </section>
+      {error && <p className="footnote error">{error}</p>}
+      <p className="footnote">
+        Notes are saved as one Markdown file per day in <code>{DATA_ROOT}/notes</code>, and the results in <code>{DATA_ROOT}/data.json</code>.
+        {!bakedKey && ` The Dropbox app needs this redirect URI: ${redirectUri()}`}
+      </p>
 
-      <section className="card">
-        <h2>2. AI</h2>
-        <p className="muted small">
-          The AI reads each new or edited entry once and pulls out activities, purchases, mood and people. Right now that's Claude (
-          {CLAUDE_MODEL}) with your own API key. Signing in with ChatGPT is planned. Without a key, only the Time and Money lists
-          in your template are counted.
-        </p>
-        <Field
-          label="Claude API key"
-          hint="Kept only in this browser and sent only to api.anthropic.com. Give the key a monthly spend limit in the Claude Console; a journal costs well under a dollar a month."
-        >
-          <input type="password" autoComplete="off" value={aiKey} onChange={(e) => setAiKey(e.target.value)} onBlur={() => persist("anthropicKey", aiKey)} placeholder="sk-ant-..." />
-        </Field>
+      <h3 className="section-label">AI</h3>
+      <section className="group list">
+        <div className="list-row">
+          <div className="segmented small" role="tablist">
+            <button role="tab" aria-selected={ai === "claude"} className={ai === "claude" ? "on" : ""} onClick={() => chooseAi("claude")}>
+              Claude
+            </button>
+            <button role="tab" aria-selected={ai === "chatgpt"} className={ai === "chatgpt" ? "on" : ""} onClick={() => chooseAi("chatgpt")}>
+              ChatGPT
+            </button>
+          </div>
+        </div>
+        {ai === "claude" ? (
+          <label className="list-row input-row">
+            <span className="list-title">API key</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={aiKey}
+              onChange={(e) => setAiKey(e.target.value)}
+              onBlur={() => settings.set("anthropicKey", aiKey.trim())}
+              placeholder="sk-ant-…"
+            />
+          </label>
+        ) : (
+          <div className="list-row column">
+            <button className="chatgpt-btn" disabled>
+              Continue with ChatGPT
+            </button>
+            <span className="muted small">
+              Not available on this site yet. OpenAI only lets apps use your ChatGPT plan when they run on your own computer, or
+              after OpenAI approves a hosted site.
+            </span>
+          </div>
+        )}
       </section>
+      <p className="footnote">
+        {ai === "claude"
+          ? `Each new or edited note is read once by ${CLAUDE_MODEL}. The key stays in this browser and only goes to api.anthropic.com. Give it a monthly spend limit in the Claude Console; a journal costs well under a dollar a month.`
+          : "Until then, choose Claude, or leave AI off and only the Time and Money lists are counted."}
+      </p>
 
-      <section className="card">
-        <h2>3. Joplin</h2>
-        <ol className="steps">
-          <li>In Joplin (desktop and phone): Tools › Options › Synchronisation › target <b>Dropbox</b>.</li>
-          <li>
-            Leave <b>end-to-end encryption off</b>. Encrypted notes can't be read by this app.
-          </li>
-          <li>
-            Make a notebook called <b>{notebook || "Journal"}</b>, and one note per day titled like <code>2026-10-28</code>.
-          </li>
-          <li>Start each note with this template, then write freely under Journal:</li>
-        </ol>
-        <pre className="template">{ENTRY_TEMPLATE}</pre>
-        <button
-          className="secondary"
-          onClick={async () => {
-            await navigator.clipboard.writeText(ENTRY_TEMPLATE);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
-        >
-          {copied ? "Copied" : "Copy template"}
-        </button>
-      </section>
-
-      <section className="card">
-        <h2>Categories</h2>
-        <p className="muted small">One per line. New lists apply to entries the AI reads from now on; fix older ones on the Entries page.</p>
+      <h3 className="section-label">Categories</h3>
+      <section className="group">
         <div className="grid2">
-          <Field label="Time">
+          <label className="field">
+            <span>Time</span>
             <textarea rows={12} value={time} onChange={(e) => setTime(e.target.value)} />
-          </Field>
-          <Field label="Money">
+          </label>
+          <label className="field">
+            <span>Money</span>
             <textarea rows={12} value={money} onChange={(e) => setMoney(e.target.value)} />
-          </Field>
+          </label>
         </div>
         <button
-          className="secondary"
+          className="btn"
           disabled={!props.categories}
           title={props.categories ? "" : "Refresh once first"}
           onClick={() => {
@@ -155,26 +147,38 @@ export function Settings(props: {
             if (!t.includes("Other")) t.push("Other");
             if (!m.includes("Other")) m.push("Other");
             props.onCategories({ time: t, money: m });
+            setSavedCats(true);
+            setTimeout(() => setSavedCats(false), 1500);
           }}
         >
-          Save categories
+          {savedCats ? "Saved" : "Save categories"}
         </button>
       </section>
+      <p className="footnote">One per line. New lists apply to notes the AI reads from now on; fix older ones from the note itself.</p>
 
-      <section className="card">
-        <h2>Sample data</h2>
-        <p className="muted small">Explore the dashboard with ten weeks of made-up entries before setting anything up.</p>
-        <div className="row">
-          <button className="secondary" onClick={props.onDemo}>
-            Load sample data
+      <h3 className="section-label">Sample data</h3>
+      <section className="group list">
+        <div className="list-row">
+          <button className="link" onClick={props.onDemo}>
+            Load ten weeks of sample notes
           </button>
-          {props.source !== "none" && (
-            <button className="secondary" onClick={props.onClear}>
+        </div>
+        {props.source !== "none" && (
+          <div className="list-row">
+            <button className="link destructive" onClick={props.onClear}>
               {props.source === "demo" ? "Remove sample data" : "Clear this browser's copy"}
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </section>
-    </>
+
+      <h3 className="section-label">Privacy</h3>
+      <section className="group">
+        <p className="small">
+          This page runs entirely in your browser. Your notes go only to your Dropbox and, when you press Refresh, to the AI you chose.
+          Keys and sign-ins are kept in this browser, so each device connects once.
+        </p>
+      </section>
+    </div>
   );
 }

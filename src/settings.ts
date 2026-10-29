@@ -1,19 +1,16 @@
-// Per-browser settings. Secrets (AI key, Dropbox tokens) never leave this browser except to their own API.
+// Per-browser settings. Secrets (AI key, sign-in tokens) never leave this browser except to their own API.
 
 const PREFIX = "jt.";
 
-export type SettingKey = "dropboxAppKey" | "dropboxTokens" | "joplinPath" | "journalNotebook" | "anthropicKey";
+export type SettingKey = "dropboxAppKey" | "dropboxTokens" | "anthropicKey" | "aiProvider" | "openaiTokens" | "openaiClientId";
 
-const DEFAULTS: Partial<Record<SettingKey, string>> = {
-  joplinPath: "/Apps/Joplin",
-  journalNotebook: "Journal",
-};
+export type AiChoice = "claude" | "chatgpt";
 
 function read(key: SettingKey): string {
   try {
-    return localStorage.getItem(PREFIX + key) ?? DEFAULTS[key] ?? "";
+    return localStorage.getItem(PREFIX + key) ?? "";
   } catch {
-    return DEFAULTS[key] ?? "";
+    return "";
   }
 }
 
@@ -37,7 +34,11 @@ export const settings = {
   dropboxAppKey(): string {
     return read("dropboxAppKey") || (import.meta.env.VITE_DROPBOX_APP_KEY as string | undefined) || "";
   },
+  aiProvider(): AiChoice {
+    return read("aiProvider") === "chatgpt" ? "chatgpt" : "claude";
+  },
 };
 
-/** Where the app keeps its results, outside Joplin's folder so Joplin sync is never touched. */
-export const DATA_FILE = "/Joplin Trends/data.json";
+/** Everything the app stores lives under this folder in the user's Dropbox. */
+export const DATA_ROOT = "/Joplin Trends";
+export const DATA_FILE = `${DATA_ROOT}/data.json`;

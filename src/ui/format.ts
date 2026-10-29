@@ -1,25 +1,26 @@
+// Apple system colors (light-mode values; they read well on dark backgrounds too).
 const COLORS: Record<string, string> = {
-  "Class/Study": "#4f7cff",
-  Work: "#f2a33a",
-  Research: "#9b6cf0",
-  Exercise: "#2fb27a",
-  Social: "#ef6f9a",
-  Family: "#e05a4f",
-  Entertainment: "#46b5d1",
-  Commute: "#a1887f",
-  Chores: "#8aa04a",
-  Health: "#22a6a0",
-  Sleep: "#6b7fa8",
-  Food: "#f2a33a",
-  Groceries: "#2fb27a",
-  "Transport/Gas": "#4f7cff",
-  Shopping: "#ef6f9a",
-  Subscriptions: "#9b6cf0",
-  Bills: "#e05a4f",
-  Other: "#9aa0a6",
+  "Class/Study": "#007AFF",
+  Work: "#FF9500",
+  Research: "#AF52DE",
+  Exercise: "#34C759",
+  Social: "#FF2D55",
+  Family: "#FF3B30",
+  Entertainment: "#32ADE6",
+  Commute: "#A2845E",
+  Chores: "#FFCC00",
+  Health: "#30B0C7",
+  Sleep: "#5856D6",
+  Food: "#FF9500",
+  Groceries: "#34C759",
+  "Transport/Gas": "#007AFF",
+  Shopping: "#FF2D55",
+  Subscriptions: "#AF52DE",
+  Bills: "#FF3B30",
+  Other: "#8E8E93",
 };
 
-const EXTRA = ["#d4a017", "#5c9ead", "#c06c84", "#6c9a3c", "#8e7cc3", "#e07b39"];
+const EXTRA = ["#00C7BE", "#FF9F0A", "#BF5AF2", "#64D2FF", "#FFD60A", "#AC8E68"];
 
 export function colorFor(category: string): string {
   if (COLORS[category]) return COLORS[category];

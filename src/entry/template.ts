@@ -1,6 +1,6 @@
 import type { TemplateData } from "../types";
 
-// The daily entry template. Users paste this into a Joplin note titled YYYY-MM-DD.
+// The daily note template. Notes are saved in this shape as YYYY-MM-DD.md.
 export const ENTRY_TEMPLATE = `---
 mood:
 energy:
@@ -112,7 +112,8 @@ export function parseTemplate(body: string): TemplateData {
     const heading = /^\s*#{1,6}\s+(.*)$/.exec(line);
     if (heading) {
       section = sectionFor(heading[1]);
-      if (section === "other") free.push(line);
+      // The "## Journal" heading itself is part of the template, not something the user wrote.
+      if (section === "other" && !/^(journal|notes?|diary)\s*$/i.test(heading[1].trim())) free.push(line);
       continue;
     }
     const item = LIST_ITEM.exec(line);
